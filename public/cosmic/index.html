@@ -37,11 +37,12 @@
   <!-- Label container for CSS2DRenderer -->
   <div id="labels"></div>
 
+  <!-- Focus dropdown -->
+  <div id="focus-select-container" style="position:fixed;top:3.5rem;left:50%;transform:translateX(-50%);z-index:15;"></div>
+
   <!-- Spacecraft toggle panel -->
   <aside class="overlay-panel spacecraft-panel" aria-label="Spacecraft visibility" aria-expanded="true" style="top:3.5rem;">
-    <button class="panel-toggle" onclick="this.parentElement.setAttribute('aria-expanded', this.parentElement.getAttribute('aria-expanded')==='true'?'false':'true')">
-      Spacecraft ▾
-    </button>
+    <button class="panel-toggle" id="spacecraft-toggle-btn">Spacecraft ▾</button>
     <div class="panel-body" id="spacecraft-toggles"></div>
   </aside>
 
