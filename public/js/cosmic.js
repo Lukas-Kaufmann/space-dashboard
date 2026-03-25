@@ -161,6 +161,47 @@ function createTrajectoryLine(points, color, opacity = 0.25) {
   return line;
 }
 
+// === Planet Material ===
+
+function createPlanetMaterial(baseColor) {
+  // Generate a procedural canvas texture with surface variation
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  // Base color
+  const c = new THREE.Color(baseColor);
+  ctx.fillStyle = `rgb(${c.r * 255 | 0}, ${c.g * 255 | 0}, ${c.b * 255 | 0})`;
+  ctx.fillRect(0, 0, size, size);
+
+  // Add noise bands for surface detail
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const noise = (Math.random() - 0.5) * 30;
+      // Latitude bands (like Jupiter/Saturn)
+      const band = Math.sin(y / size * Math.PI * 6) * 15;
+      const r = Math.max(0, Math.min(255, c.r * 255 + noise + band));
+      const g = Math.max(0, Math.min(255, c.g * 255 + noise + band * 0.7));
+      const b = Math.max(0, Math.min(255, c.b * 255 + noise + band * 0.5));
+      ctx.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const emissive = new THREE.Color(baseColor).multiplyScalar(0.15);
+
+  return new THREE.MeshStandardMaterial({
+    map: texture,
+    emissive,
+    emissiveIntensity: 1.0,
+    roughness: 0.8,
+    metalness: 0.1,
+  });
+}
+
 // === WebGL Check ===
 
 function hasWebGL() {
@@ -231,14 +272,14 @@ async function init() {
   controls.enablePan = false;
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE };
 
-  scene.add(new THREE.AmbientLight(0x404040, 0.5));
+  scene.add(new THREE.AmbientLight(0x8090a0, 1.2));
 
   // --- Sun ---
   const sunGeo = new THREE.SphereGeometry(1.5, 32, 16);
   const sun = new THREE.Mesh(sunGeo, new THREE.MeshBasicMaterial({ color: 0xfbbf24 }));
   sun.userData = { type: 'star', name: 'Sun', ready: true };
   scene.add(sun);
-  scene.add(new THREE.PointLight(0xffffff, 1.5, 300));
+  scene.add(new THREE.PointLight(0xffffff, 2.0, 0)); // range=0 means infinite
   addLabel(scene, sun, 'Sun');
 
   const renderState = { value: true };
@@ -350,7 +391,7 @@ async function init() {
 
       // Trajectory
       const trajPoints = computePlanetTrajectory(planet.name);
-      const trajLine = createTrajectoryLine(trajPoints, vis.color, 0.25);
+      const trajLine = createTrajectoryLine(trajPoints, vis.color, 0.5);
       if (trajLine) {
         scene.add(trajLine);
         trajectoryLines.push({
@@ -360,10 +401,10 @@ async function init() {
         });
       }
 
-      // Sphere
+      // Sphere with procedural texture
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(vis.size, 32, 16),
-        new THREE.MeshStandardMaterial({ color: vis.color, roughness: 0.7 })
+        createPlanetMaterial(vis.color)
       );
       mesh.position.copy(scenePos);
       const dist = Math.sqrt(planet.position.x ** 2 + planet.position.y ** 2 + planet.position.z ** 2);
@@ -458,7 +499,7 @@ async function init() {
       // Trajectory from orbital elements
       if (neo.orbit) {
         const trajPoints = computeNeoTrajectory(neo.orbit);
-        const trajLine = createTrajectoryLine(trajPoints, 0xef4444, 0.15);
+        const trajLine = createTrajectoryLine(trajPoints, 0xef4444, 0.4);
         if (trajLine) {
           scene.add(trajLine);
           trajectoryLines.push({
@@ -469,7 +510,7 @@ async function init() {
         }
       }
 
-      const size = Math.max(0.1, Math.min(0.3, (neo.diameterMaxKm || 0.1) * 2));
+      const size = Math.max(0.05, Math.min(0.15, (neo.diameterMaxKm || 0.05) * 0.5));
       const color = neo.isPotentiallyHazardous ? 0xef4444 : 0x9e9e9e;
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(size, 8, 8),
@@ -491,7 +532,13 @@ async function init() {
       scene.add(mesh);
       clickables.push(mesh);
       bodyMeshes[neo.name] = mesh;
-      if (rawPos) bodies.push({ mesh, rawPos });
+      // Always track for scale rebuild — use orbit recompute if rawPos available
+      if (rawPos) {
+        bodies.push({ mesh, rawPos });
+      } else if (neo.orbit) {
+        // Recompute from orbit on scale change
+        bodies.push({ mesh, rawPos: computeNeoPosition(neo.orbit, new Date()) });
+      }
     }
   }
 

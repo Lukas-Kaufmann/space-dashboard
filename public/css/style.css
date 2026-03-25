@@ -583,11 +583,12 @@ a:hover {
   pointer-events: none;
   font-family: "IBM Plex Mono", monospace;
   font-size: 11px;
-  color: var(--text-secondary);
-  background: rgba(10, 14, 23, 0.6);
-  padding: 1px 4px;
+  color: #c8d6e5;
+  background: rgba(10, 14, 23, 0.5);
+  padding: 2px 5px;
   border-radius: 2px;
   white-space: nowrap;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
 }
 
 /* === Focus Controls === */
