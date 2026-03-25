@@ -180,6 +180,77 @@ function renderPlanets(planets) {
   `;
 }
 
+// --- Meteor Showers ---
+// Annual calendar of major showers (IMO data, recurs yearly)
+// Dates are month-day only; year is applied at runtime.
+const SHOWERS = [
+  { name: 'Quadrantids',     peak: [1, 4],   start: [1, 1],   end: [1, 6],   zhr: 120, velocity: 41, parent: '2003 EH1' },
+  { name: 'Lyrids',          peak: [4, 22],  start: [4, 14],  end: [4, 30],  zhr: 18,  velocity: 49, parent: 'C/1861 G1 (Thatcher)' },
+  { name: 'η Aquariids',     peak: [5, 6],   start: [4, 19],  end: [5, 28],  zhr: 50,  velocity: 66, parent: '1P/Halley' },
+  { name: 'δ Aquariids',     peak: [7, 30],  start: [7, 12],  end: [8, 23],  zhr: 25,  velocity: 41, parent: '96P/Machholz' },
+  { name: 'Perseids',        peak: [8, 12],  start: [7, 17],  end: [8, 24],  zhr: 100, velocity: 59, parent: '109P/Swift-Tuttle' },
+  { name: 'Draconids',       peak: [10, 8],  start: [10, 6],  end: [10, 10], zhr: 10,  velocity: 20, parent: '21P/Giacobini-Zinner' },
+  { name: 'Orionids',        peak: [10, 21], start: [10, 2],  end: [11, 7],  zhr: 20,  velocity: 66, parent: '1P/Halley' },
+  { name: 'Taurids South',   peak: [10, 10], start: [9, 10],  end: [11, 20], zhr: 5,   velocity: 27, parent: '2P/Encke' },
+  { name: 'Taurids North',   peak: [11, 12], start: [10, 20], end: [12, 10], zhr: 5,   velocity: 29, parent: '2P/Encke' },
+  { name: 'Leonids',         peak: [11, 17], start: [11, 6],  end: [11, 30], zhr: 15,  velocity: 71, parent: '55P/Tempel-Tuttle' },
+  { name: 'Geminids',        peak: [12, 14], start: [12, 4],  end: [12, 20], zhr: 150, velocity: 35, parent: '3200 Phaethon' },
+  { name: 'Ursids',          peak: [12, 22], start: [12, 17], end: [12, 26], zhr: 10,  velocity: 33, parent: '8P/Tuttle' },
+];
+
+function getMeteorShowers(date) {
+  const year = date.getFullYear();
+  const now = date.getTime();
+
+  return SHOWERS.map(s => {
+    const peakDate = new Date(year, s.peak[0] - 1, s.peak[1]);
+    const startDate = new Date(year, s.start[0] - 1, s.start[1]);
+    const endDate = new Date(year, s.end[0] - 1, s.end[1], 23, 59);
+
+    const isActive = now >= startDate.getTime() && now <= endDate.getTime();
+    const daysUntilPeak = Math.round((peakDate.getTime() - now) / 86400000);
+
+    return { ...s, peakDate, startDate, endDate, isActive, daysUntilPeak };
+  })
+    .filter(s => s.isActive || (s.daysUntilPeak > 0 && s.daysUntilPeak <= 30))
+    .sort((a, b) => a.daysUntilPeak - b.daysUntilPeak);
+}
+
+function renderMeteorShowers(showers) {
+  const container = document.getElementById('meteors');
+  if (!showers.length) {
+    container.innerHTML = '<div class="error-placeholder">No active or upcoming showers</div>';
+    return;
+  }
+
+  container.innerHTML = `
+    <ul class="planet-list">
+      ${showers.map(s => {
+        const peakStr = s.peakDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        let badge = '';
+        if (s.isActive && Math.abs(s.daysUntilPeak) <= 1) {
+          badge = '<span style="color:var(--go);font-weight:600;font-size:0.6875rem;"> PEAK</span>';
+        } else if (s.isActive) {
+          badge = '<span style="color:var(--maybe);font-size:0.6875rem;"> active</span>';
+        } else {
+          badge = `<span style="color:var(--text-muted);font-size:0.6875rem;"> in ${s.daysUntilPeak}d</span>`;
+        }
+
+        return `
+          <li class="planet-item">
+            <span>
+              <span class="planet-name">${s.name}</span>${badge}
+            </span>
+            <span class="planet-direction" title="Peak: ${peakStr}, ${s.velocity} km/s, parent: ${s.parent}">
+              ZHR ${s.zhr} · ${peakStr}
+            </span>
+          </li>
+        `;
+      }).join('')}
+    </ul>
+  `;
+}
+
 function renderError(elementId, message) {
   const el = document.getElementById(elementId);
   if (el) {
@@ -228,6 +299,9 @@ async function init() {
   } else {
     renderError('planets', `Planets unavailable: ${planetsResult.reason?.message}`);
   }
+
+  // Meteor showers — computed client-side from annual calendar
+  renderMeteorShowers(getMeteorShowers(new Date()));
 }
 
 init();
