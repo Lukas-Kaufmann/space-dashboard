@@ -7,16 +7,35 @@ import { fetchAll } from './api.js';
 
 const SCENE_RADIUS = 100;
 const DEG = Math.PI / 180;
+const textureLoader = new THREE.TextureLoader();
 
 const PLANET_DATA = {
-  Mercury:  { color: 0x9e9e9e, size: 0.4 },
-  Venus:    { color: 0xe8cda0, size: 0.6 },
-  Earth:    { color: 0x4a90d9, size: 0.65 },
-  Mars:     { color: 0xc1440e, size: 0.5 },
-  Jupiter:  { color: 0xc88b3a, size: 1.2 },
-  Saturn:   { color: 0xead6a6, size: 1.0 },
-  Uranus:   { color: 0x73c2d9, size: 0.8 },
-  Neptune:  { color: 0x3f54ba, size: 0.8 },
+  Mercury:  { color: 0x9e9e9e, size: 0.4, texture: '/textures/mercury.jpg' },
+  Venus:    { color: 0xe8cda0, size: 0.6, texture: '/textures/venus.jpg' },
+  Earth:    { color: 0x4a90d9, size: 0.65, texture: '/textures/earth.jpg' },
+  Mars:     { color: 0xc1440e, size: 0.5, texture: '/textures/mars.jpg' },
+  Jupiter:  { color: 0xc88b3a, size: 1.2, texture: '/textures/jupiter.jpg' },
+  Saturn:   { color: 0xead6a6, size: 1.0, texture: '/textures/saturn.jpg' },
+  Uranus:   { color: 0x73c2d9, size: 0.8, texture: '/textures/uranus.jpg' },
+  Neptune:  { color: 0x3f54ba, size: 0.8, texture: '/textures/neptune.jpg' },
+};
+
+// Major moons: distance from parent (km), orbital period (days), size (scene units)
+const MOONS = {
+  Earth:   [{ name: 'Moon',      dist: 384400,  period: 27.322,  size: 0.2,  texture: '/textures/moon.jpg' }],
+  Mars:    [{ name: 'Phobos',    dist: 9377,    period: 0.319,   size: 0.06 },
+            { name: 'Deimos',    dist: 23460,   period: 1.262,   size: 0.05 }],
+  Jupiter: [{ name: 'Io',        dist: 421700,  period: 1.769,   size: 0.15 },
+            { name: 'Europa',    dist: 671100,  period: 3.551,   size: 0.13 },
+            { name: 'Ganymede',  dist: 1070400, period: 7.155,   size: 0.18 },
+            { name: 'Callisto',  dist: 1882700, period: 16.689,  size: 0.16 }],
+  Saturn:  [{ name: 'Titan',     dist: 1221870, period: 15.945,  size: 0.17 },
+            { name: 'Enceladus', dist: 238020,  period: 1.370,   size: 0.06 },
+            { name: 'Mimas',     dist: 185520,  period: 0.942,   size: 0.05 },
+            { name: 'Rhea',      dist: 527108,  period: 4.518,   size: 0.08 }],
+  Uranus:  [{ name: 'Titania',   dist: 436300,  period: 8.706,   size: 0.08 },
+            { name: 'Oberon',    dist: 583500,  period: 13.463,  size: 0.08 }],
+  Neptune: [{ name: 'Triton',    dist: 354800,  period: 5.877,   size: 0.1  }],
 };
 
 // Keplerian elements (J2000) for planet trajectory computation
@@ -36,7 +55,7 @@ const ORBITAL_PERIODS = {
   Jupiter: 4333, Saturn: 10759, Uranus: 30687, Neptune: 60190,
 };
 
-// === Scale Functions ===
+// === Scale ===
 
 let useLogScale = true;
 
@@ -44,10 +63,8 @@ function auToScene(au) {
   if (useLogScale) {
     const logMin = Math.log10(0.2);
     const logMax = Math.log10(250);
-    const t = (Math.log10(Math.max(au, 0.2)) - logMin) / (logMax - logMin);
-    return t * SCENE_RADIUS;
+    return ((Math.log10(Math.max(au, 0.2)) - logMin) / (logMax - logMin)) * SCENE_RADIUS;
   }
-  // Linear: 1 AU = 3 scene units, capped at SCENE_RADIUS
   return Math.min(au * 3, SCENE_RADIUS);
 }
 
@@ -55,36 +72,25 @@ function posToScene(pos) {
   if (!pos) return null;
   const dist = Math.sqrt(pos.x ** 2 + pos.y ** 2 + pos.z ** 2);
   if (dist < 0.001) return new THREE.Vector3(0, 0, 0);
-  const scale = auToScene(dist) / dist;
-  return new THREE.Vector3(pos.x * scale, pos.z * scale, -pos.y * scale);
+  const s = auToScene(dist) / dist;
+  return new THREE.Vector3(pos.x * s, pos.z * s, -pos.y * s);
 }
 
 // === Keplerian Computation ===
 
-function computeKeplerianPosition(name, date) {
+function computePlanetPos(name, date) {
   const el = ELEMENTS[name];
   if (!el) return null;
   const T = (date.getTime() - Date.UTC(2000, 0, 1, 12, 0, 0)) / (365.25 * 86400000 * 100);
-  const a = el.a + el.da * T;
-  const e = el.e + el.de * T;
-  const I = (el.I + el.dI * T) * DEG;
-  const L = (el.L + el.dL * T) * DEG;
-  const wp = (el.w + el.dw * T) * DEG;
-  const O = (el.O + el.dO * T) * DEG;
+  const a = el.a + el.da * T, e = el.e + el.de * T;
+  const I = (el.I + el.dI * T) * DEG, L = (el.L + el.dL * T) * DEG;
+  const wp = (el.w + el.dw * T) * DEG, O = (el.O + el.dO * T) * DEG;
   const w = wp - O;
-  let M = L - wp;
-  M = ((M % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+  let M = ((L - wp) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
   let E = M;
-  for (let i = 0; i < 10; i++) {
-    const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
-    E -= dE;
-    if (Math.abs(dE) < 1e-10) break;
-  }
-  const xp = a * (Math.cos(E) - e);
-  const yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
-  const cosO = Math.cos(O), sinO = Math.sin(O);
-  const cosI = Math.cos(I), sinI = Math.sin(I);
-  const cosw = Math.cos(w), sinw = Math.sin(w);
+  for (let i = 0; i < 10; i++) { const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E)); E -= dE; if (Math.abs(dE) < 1e-10) break; }
+  const xp = a * (Math.cos(E) - e), yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
+  const cosO = Math.cos(O), sinO = Math.sin(O), cosI = Math.cos(I), sinI = Math.sin(I), cosw = Math.cos(w), sinw = Math.sin(w);
   return {
     x: (cosO * cosw - sinO * sinw * cosI) * xp + (-cosO * sinw - sinO * cosw * cosI) * yp,
     y: (sinO * cosw + cosO * sinw * cosI) * xp + (-sinO * sinw + cosO * cosw * cosI) * yp,
@@ -92,31 +98,16 @@ function computeKeplerianPosition(name, date) {
   };
 }
 
-// Compute position from NeoWs-style orbital elements
-// (epoch-based, not century-rate-based like planets)
-function computeNeoPosition(orbit, date) {
-  const { a, e, I: Ideg, O: Odeg, w: wdeg, M: M0deg, period, epoch } = orbit;
-  // Days since epoch (Julian date)
+function computeNeoPos(orbit, date) {
+  const { a, e, I: Id, O: Od, w: wd, M: M0d, period, epoch } = orbit;
   const jd = date.getTime() / 86400000 + 2440587.5;
-  const daysSinceEpoch = jd - epoch;
-  // Mean motion (deg/day)
   const n = 360 / period;
-  // Current mean anomaly
-  let M = (M0deg + n * daysSinceEpoch) * DEG;
-  M = ((M % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
-  // Kepler's equation
+  let M = ((M0d + n * (jd - epoch)) * DEG % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
   let E = M;
-  for (let i = 0; i < 10; i++) {
-    const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
-    E -= dE;
-    if (Math.abs(dE) < 1e-10) break;
-  }
-  const xp = a * (Math.cos(E) - e);
-  const yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
-  const I = Ideg * DEG, O = Odeg * DEG, w = wdeg * DEG;
-  const cosO = Math.cos(O), sinO = Math.sin(O);
-  const cosI = Math.cos(I), sinI = Math.sin(I);
-  const cosw = Math.cos(w), sinw = Math.sin(w);
+  for (let i = 0; i < 10; i++) { const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E)); E -= dE; if (Math.abs(dE) < 1e-10) break; }
+  const xp = a * (Math.cos(E) - e), yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
+  const I = Id * DEG, O = Od * DEG, w = wd * DEG;
+  const cosO = Math.cos(O), sinO = Math.sin(O), cosI = Math.cos(I), sinI = Math.sin(I), cosw = Math.cos(w), sinw = Math.sin(w);
   return {
     x: (cosO * cosw - sinO * sinw * cosI) * xp + (-cosO * sinw - sinO * cosw * cosI) * yp,
     y: (sinO * cosw + cosO * sinw * cosI) * xp + (-sinO * sinw + cosO * cosw * cosI) * yp,
@@ -126,89 +117,72 @@ function computeNeoPosition(orbit, date) {
 
 // === Trajectory Lines ===
 
-function computePlanetTrajectory(name, steps = 128) {
-  const period = ORBITAL_PERIODS[name];
-  if (!period) return [];
+function computeTrajectoryPoints(positionFn, periodDays, steps = 128) {
   const now = Date.now();
-  const points = [];
+  const pts = [];
   for (let i = 0; i <= steps; i++) {
-    const date = new Date(now + (i / steps) * period * 86400000);
-    const pos = computeKeplerianPosition(name, date);
-    const sp = posToScene(pos);
-    if (sp) points.push(sp);
+    const date = new Date(now + (i / steps) * periodDays * 86400000);
+    const sp = posToScene(positionFn(date));
+    if (sp) pts.push(sp);
   }
-  return points;
+  return pts;
 }
 
-function computeNeoTrajectory(orbit, steps = 128) {
-  if (!orbit) return [];
-  const now = Date.now();
-  const points = [];
-  for (let i = 0; i <= steps; i++) {
-    const date = new Date(now + (i / steps) * orbit.period * 86400000);
-    const pos = computeNeoPosition(orbit, date);
-    const sp = posToScene(pos);
-    if (sp) points.push(sp);
-  }
-  return points;
-}
-
-function createTrajectoryLine(points, color, opacity = 0.25) {
+function makeTrajectoryLine(points, color, opacity) {
   if (points.length < 2) return null;
-  const geo = new THREE.BufferGeometry().setFromPoints(points);
-  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
-  const line = new THREE.Line(geo, mat);
-  return line;
+  return new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(points),
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity })
+  );
 }
 
-// === Planet Material ===
+// === Texture Loading ===
 
-function createPlanetMaterial(baseColor) {
-  // Generate a procedural canvas texture with surface variation
-  const size = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-
-  // Base color
-  const c = new THREE.Color(baseColor);
-  ctx.fillStyle = `rgb(${c.r * 255 | 0}, ${c.g * 255 | 0}, ${c.b * 255 | 0})`;
-  ctx.fillRect(0, 0, size, size);
-
-  // Add noise bands for surface detail
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const noise = (Math.random() - 0.5) * 30;
-      // Latitude bands (like Jupiter/Saturn)
-      const band = Math.sin(y / size * Math.PI * 6) * 15;
-      const r = Math.max(0, Math.min(255, c.r * 255 + noise + band));
-      const g = Math.max(0, Math.min(255, c.g * 255 + noise + band * 0.7));
-      const b = Math.max(0, Math.min(255, c.b * 255 + noise + band * 0.5));
-      ctx.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`;
-      ctx.fillRect(x, y, 1, 1);
-    }
-  }
-
-  const texture = new THREE.CanvasTexture(canvas);
-  const emissive = new THREE.Color(baseColor).multiplyScalar(0.15);
-
-  return new THREE.MeshStandardMaterial({
-    map: texture,
-    emissive,
-    emissiveIntensity: 1.0,
-    roughness: 0.8,
-    metalness: 0.1,
+function loadPlanetMaterial(vis) {
+  const emissive = new THREE.Color(vis.color).multiplyScalar(0.15);
+  const mat = new THREE.MeshStandardMaterial({
+    color: vis.color, emissive, emissiveIntensity: 1.0, roughness: 0.8, metalness: 0.1,
   });
+  if (vis.texture) {
+    textureLoader.load(vis.texture, (tex) => {
+      mat.map = tex;
+      mat.needsUpdate = true;
+    });
+  }
+  return mat;
 }
 
-// === WebGL Check ===
+function loadMoonMaterial(moon) {
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xbbbbbb, emissive: 0x222222, roughness: 0.9,
+  });
+  if (moon.texture) {
+    textureLoader.load(moon.texture, (tex) => {
+      mat.map = tex;
+      mat.needsUpdate = true;
+    });
+  }
+  return mat;
+}
 
-function hasWebGL() {
-  try {
-    const c = document.createElement('canvas');
-    return !!(c.getContext('webgl2') || c.getContext('webgl'));
-  } catch { return false; }
+// === Moon orbital position ===
+// Exaggerated distance from parent (actual km → scene offset)
+function moonSceneOffset(moon, parentSize) {
+  // Normalize distances: closest moon gets offset ~1.5× parent size,
+  // farthest gets ~4× parent size. Use sqrt for compression.
+  const base = parentSize + 0.5;
+  const spread = Math.sqrt(moon.dist / 500000) * 1.5;
+  const r = base + spread;
+
+  // Compute angle from orbital period and current time
+  const daysSinceEpoch = Date.now() / 86400000;
+  const angle = ((daysSinceEpoch % moon.period) / moon.period) * Math.PI * 2;
+
+  return new THREE.Vector3(
+    Math.cos(angle) * r,
+    Math.sin(angle) * 0.1 * r, // slight inclination
+    Math.sin(angle) * r
+  );
 }
 
 // === Camera Animation ===
@@ -216,16 +190,14 @@ function hasWebGL() {
 function animateCameraTo(camera, controls, targetPos, renderState, duration = 800) {
   const startPos = camera.position.clone();
   const startTarget = controls.target.clone();
-  const dist = Math.max(5, targetPos.length() * 0.3);
+  const dist = Math.max(3, targetPos.length() * 0.25);
   const endPos = targetPos.clone().add(new THREE.Vector3(dist * 0.5, dist * 0.4, dist * 0.5));
-  const endTarget = targetPos.clone();
   const startTime = performance.now();
-
   function step() {
     const t = Math.min((performance.now() - startTime) / duration, 1);
     const ease = 1 - Math.pow(1 - t, 3);
     camera.position.lerpVectors(startPos, endPos, ease);
-    controls.target.lerpVectors(startTarget, endTarget, ease);
+    controls.target.lerpVectors(startTarget, targetPos, ease);
     controls.update();
     renderState.value = true;
     if (t < 1) requestAnimationFrame(step);
@@ -233,13 +205,15 @@ function animateCameraTo(camera, controls, targetPos, renderState, duration = 80
   requestAnimationFrame(step);
 }
 
+function hasWebGL() {
+  try { return !!(document.createElement('canvas').getContext('webgl2') || document.createElement('canvas').getContext('webgl')); }
+  catch { return false; }
+}
+
 // === Main ===
 
 async function init() {
-  if (!hasWebGL()) {
-    showFallback();
-    return;
-  }
+  if (!hasWebGL()) { showFallback(); return; }
 
   const canvas = document.getElementById('canvas');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -249,18 +223,12 @@ async function init() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a0e17);
 
-  const camera = new THREE.PerspectiveCamera(
-    60, window.innerWidth / window.innerHeight, 0.1, 2000
-  );
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
   camera.position.set(0, 40, 60);
 
   const labelRenderer = new CSS2DRenderer();
   labelRenderer.setSize(window.innerWidth, window.innerHeight);
-  labelRenderer.domElement.style.position = 'fixed';
-  labelRenderer.domElement.style.top = '0';
-  labelRenderer.domElement.style.left = '0';
-  labelRenderer.domElement.style.pointerEvents = 'none';
-  labelRenderer.domElement.style.zIndex = '5';
+  labelRenderer.domElement.style.cssText = 'position:fixed;top:0;left:0;pointer-events:none;z-index:5';
   document.body.appendChild(labelRenderer.domElement);
 
   const controls = new OrbitControls(camera, canvas);
@@ -272,498 +240,396 @@ async function init() {
   controls.enablePan = false;
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE };
 
-  scene.add(new THREE.AmbientLight(0x8090a0, 1.2));
+  scene.add(new THREE.AmbientLight(0x8090a0, 1.5));
+  scene.add(new THREE.PointLight(0xffffff, 2.0, 0));
 
-  // --- Sun ---
-  const sunGeo = new THREE.SphereGeometry(1.5, 32, 16);
-  const sun = new THREE.Mesh(sunGeo, new THREE.MeshBasicMaterial({ color: 0xfbbf24 }));
+  // Sun
+  const sun = new THREE.Mesh(
+    new THREE.SphereGeometry(1.5, 32, 16),
+    new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
+  );
   sun.userData = { type: 'star', name: 'Sun', ready: true };
   scene.add(sun);
-  scene.add(new THREE.PointLight(0xffffff, 2.0, 0)); // range=0 means infinite
   addLabel(scene, sun, 'Sun');
 
-  const renderState = { value: true };
+  const R = { value: true }; // render flag
 
-  // --- Collections for scale rebuild ---
-  // Each entry: { mesh, rawPos (AU xyz), label?, trajectoryLine?, trajectoryData }
-  const bodies = [];
-  const trajectoryLines = []; // { line, type: 'planet'|'asteroid', points() }
+  // === State ===
+  // Bodies: each has { mesh, getAUPos() } so scale toggle always works
+  const allBodies = [];
+  const trajectories = [];
   const clickables = [sun];
   const bodyMeshes = { Sun: sun };
 
-  // --- Raycaster ---
+  // === Raycaster ===
   const raycaster = new THREE.Raycaster();
-  const pointer = new THREE.Vector2();
-  let pointerDownPos = new THREE.Vector2();
+  const ptr = new THREE.Vector2(), ptrDown = new THREE.Vector2();
 
   canvas.addEventListener('pointerdown', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    pointerDownPos.set(
-      ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      -((e.clientY - rect.top) / rect.height) * 2 + 1
-    );
+    const r = canvas.getBoundingClientRect();
+    ptrDown.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   });
-
   canvas.addEventListener('pointerup', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    pointer.set(
-      ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      -((e.clientY - rect.top) / rect.height) * 2 + 1
-    );
-    if (pointer.distanceTo(pointerDownPos) < 0.02) {
-      raycaster.setFromCamera(pointer, camera);
+    const r = canvas.getBoundingClientRect();
+    ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    if (ptr.distanceTo(ptrDown) < 0.02) {
+      raycaster.setFromCamera(ptr, camera);
       const hits = raycaster.intersectObjects(clickables);
-      if (hits.length > 0 && hits[0].object.userData?.ready) {
-        showInfoPanel(hits[0].object.userData, () => {
-          animateCameraTo(camera, controls, hits[0].object.position, renderState);
-        });
-      } else {
-        hideInfoPanel();
-      }
+      if (hits.length && hits[0].object.userData?.ready)
+        showInfoPanel(hits[0].object.userData, () => animateCameraTo(camera, controls, hits[0].object.position, R));
+      else hideInfoPanel();
     }
   });
 
-  // --- Rendering ---
-  controls.addEventListener('change', () => { renderState.value = true; });
-
-  function render() {
-    controls.update();
-    renderer.render(scene, camera);
-    labelRenderer.render(scene, camera);
-    renderState.value = false;
-  }
-
-  renderer.setAnimationLoop(() => { if (renderState.value) render(); });
+  // === Render loop ===
+  controls.addEventListener('change', () => { R.value = true; });
+  function render() { controls.update(); renderer.render(scene, camera); labelRenderer.render(scene, camera); R.value = false; }
+  renderer.setAnimationLoop(() => { if (R.value) render(); });
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     labelRenderer.setSize(window.innerWidth, window.innerHeight);
-    renderState.value = true;
+    R.value = true;
   });
-
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      renderer.setAnimationLoop(null);
-    } else {
-      renderState.value = true;
-      renderer.setAnimationLoop(() => { if (renderState.value) render(); });
-    }
+    if (document.hidden) renderer.setAnimationLoop(null);
+    else { R.value = true; renderer.setAnimationLoop(() => { if (R.value) render(); }); }
   });
 
-  // === Rebuild positions (called on scale toggle) ===
-  function rebuildPositions() {
-    for (const b of bodies) {
-      const sp = posToScene(b.rawPos);
+  // === Rebuild all positions on scale change ===
+  function rebuildAll() {
+    for (const b of allBodies) {
+      const sp = posToScene(b.getAUPos());
       if (sp) b.mesh.position.copy(sp);
     }
-    // Rebuild all trajectory lines
-    for (const t of trajectoryLines) {
-      const pts = t.computePoints();
-      const posAttr = t.line.geometry.getAttribute('position');
-      if (posAttr && posAttr.count === pts.length) {
-        for (let i = 0; i < pts.length; i++) {
-          posAttr.setXYZ(i, pts[i].x, pts[i].y, pts[i].z);
-        }
-        posAttr.needsUpdate = true;
-      } else {
-        // Rebuild geometry
-        t.line.geometry.dispose();
-        t.line.geometry = new THREE.BufferGeometry().setFromPoints(pts);
-      }
+    for (const t of trajectories) {
+      const pts = t.getPoints();
+      t.line.geometry.dispose();
+      t.line.geometry = new THREE.BufferGeometry().setFromPoints(pts);
     }
-    renderState.value = true;
+    R.value = true;
   }
 
-  // --- Fetch data ---
+  // === Fetch data ===
   const loading = document.getElementById('loading');
   const results = await fetchAll(['planets', 'spacecraft', 'asteroids', 'space-weather']);
 
-  // --- Plot Planets + Trajectories ---
+  // === Planets + Trajectories + Moons ===
   if (results.planets.data) {
     for (const planet of results.planets.data) {
       const vis = PLANET_DATA[planet.name];
       if (!vis || !planet.position) continue;
-
       const scenePos = posToScene(planet.position);
       if (!scenePos) continue;
 
       // Trajectory
-      const trajPoints = computePlanetTrajectory(planet.name);
-      const trajLine = createTrajectoryLine(trajPoints, vis.color, 0.5);
+      const trajFn = (date) => computePlanetPos(planet.name, date);
+      const period = ORBITAL_PERIODS[planet.name] || 365;
+      const trajPts = computeTrajectoryPoints(trajFn, period);
+      const trajLine = makeTrajectoryLine(trajPts, vis.color, 0.5);
       if (trajLine) {
         scene.add(trajLine);
-        trajectoryLines.push({
-          line: trajLine,
-          type: 'planet',
-          computePoints: () => computePlanetTrajectory(planet.name),
-        });
+        trajectories.push({ line: trajLine, type: 'planet', getPoints: () => computeTrajectoryPoints(trajFn, period) });
       }
 
-      // Sphere with procedural texture
-      const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(vis.size, 32, 16),
-        createPlanetMaterial(vis.color)
-      );
+      // Planet mesh with real texture
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(vis.size, 32, 16), loadPlanetMaterial(vis));
       mesh.position.copy(scenePos);
       const dist = Math.sqrt(planet.position.x ** 2 + planet.position.y ** 2 + planet.position.z ** 2);
       mesh.userData = { type: 'planet', name: planet.name, distanceFromSunAU: dist.toFixed(3), ready: true };
-
       scene.add(mesh);
       clickables.push(mesh);
       bodyMeshes[planet.name] = mesh;
       addLabel(scene, mesh, planet.name);
-      bodies.push({ mesh, rawPos: planet.position });
+      allBodies.push({ mesh, getAUPos: () => planet.position });
+
+      // Moons
+      const moons = MOONS[planet.name];
+      if (moons) {
+        for (const moonDef of moons) {
+          const offset = moonSceneOffset(moonDef, vis.size);
+          const moonMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(moonDef.size, 16, 8),
+            loadMoonMaterial(moonDef)
+          );
+          moonMesh.position.copy(scenePos).add(offset);
+          moonMesh.userData = {
+            type: 'moon', name: moonDef.name,
+            parent: planet.name,
+            orbitalPeriod: moonDef.period.toFixed(2) + ' days',
+            ready: true,
+          };
+          scene.add(moonMesh);
+          clickables.push(moonMesh);
+          bodyMeshes[moonDef.name] = moonMesh;
+          addLabel(scene, moonMesh, moonDef.name);
+
+          // Moon repositions with parent on scale change
+          allBodies.push({
+            mesh: moonMesh,
+            getAUPos: () => {
+              // Parent position + tiny offset (moons are too close in AU to separate)
+              const pp = planet.position;
+              const off = moonSceneOffset(moonDef, vis.size);
+              // Return parent AU pos — the offset is applied in scene space
+              return pp;
+            },
+            sceneOffset: () => moonSceneOffset(moonDef, vis.size),
+          });
+        }
+      }
     }
   }
 
-  // --- Plot Spacecraft ---
+  // Override rebuild to handle moon offsets
+  function rebuildAllWithMoons() {
+    for (const b of allBodies) {
+      const sp = posToScene(b.getAUPos());
+      if (!sp) continue;
+      if (b.sceneOffset) {
+        sp.add(b.sceneOffset());
+      }
+      b.mesh.position.copy(sp);
+    }
+    for (const t of trajectories) {
+      const pts = t.getPoints();
+      t.line.geometry.dispose();
+      t.line.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+    }
+    R.value = true;
+  }
+
+  // === Spacecraft ===
   if (results.spacecraft.data) {
-    const savedToggles = loadToggles();
-    const toggleContainer = document.getElementById('spacecraft-toggles');
-    toggleContainer.innerHTML = '';
-
+    const saved = loadToggles();
+    const container = document.getElementById('spacecraft-toggles');
+    container.innerHTML = '';
     for (const craft of results.spacecraft.data) {
-      const isOn = savedToggles[craft.id] ?? craft.defaultOn;
-      const scenePos = craft.position ? posToScene(craft.position) : null;
+      const isOn = saved[craft.id] ?? craft.defaultOn;
+      const sp = craft.position ? posToScene(craft.position) : null;
       let mesh = null, label = null;
-
-      if (scenePos) {
-        mesh = new THREE.Mesh(
-          new THREE.OctahedronGeometry(0.35),
-          new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
-        );
-        mesh.position.copy(scenePos);
+      if (sp) {
+        mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.35), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
+        mesh.position.copy(sp);
         mesh.visible = isOn;
-        mesh.userData = {
-          type: 'spacecraft', name: craft.name,
-          distanceFromSunAU: craft.distanceFromSunAU?.toFixed(3) || '?',
-          ready: true,
-        };
+        mesh.userData = { type: 'spacecraft', name: craft.name, distanceFromSunAU: craft.distanceFromSunAU?.toFixed(3) || '?', ready: true };
         scene.add(mesh);
         clickables.push(mesh);
         bodyMeshes[craft.name] = mesh;
         label = addLabel(scene, mesh, craft.name);
-        bodies.push({ mesh, rawPos: craft.position });
+        const rawPos = craft.position;
+        allBodies.push({ mesh, getAUPos: () => rawPos });
       }
-
       const lbl = document.createElement('label');
       lbl.className = 'spacecraft-label';
       const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = isOn;
-      cb.dataset.craftId = craft.id;
+      cb.type = 'checkbox'; cb.checked = isOn; cb.dataset.craftId = craft.id;
       cb.addEventListener('change', () => {
         if (mesh) mesh.visible = cb.checked;
         if (label) label.visible = cb.checked;
-        saveToggles();
-        renderState.value = true;
+        saveToggles(); R.value = true;
       });
       lbl.appendChild(cb);
       lbl.appendChild(document.createTextNode(craft.name));
-      toggleContainer.appendChild(lbl);
+      container.appendChild(lbl);
     }
   }
 
-  // --- Plot Asteroids + Trajectories ---
+  // === Asteroids ===
   if (results.asteroids.data) {
     for (const neo of results.asteroids.data) {
-      let pos, rawPos;
-
+      // Compute position from orbital elements (preferred) or skip
+      let auPos = null;
       if (neo.orbit) {
-        // Compute actual position from orbital elements
-        const auPos = computeNeoPosition(neo.orbit, new Date());
-        rawPos = auPos;
-        pos = posToScene(auPos);
-      } else if (neo.closeApproach) {
-        // Fallback: place near Earth
-        const earthData = results.planets.data?.find(p => p.name === 'Earth');
-        if (!earthData?.position) continue;
-        const earthScene = posToScene(earthData.position);
-        if (!earthScene) continue;
-        const angle = Math.random() * Math.PI * 2;
-        const offset = 1 + Math.random() * 2;
-        pos = new THREE.Vector3(
-          earthScene.x + Math.cos(angle) * offset,
-          earthScene.y + (Math.random() - 0.5) * offset,
-          earthScene.z + Math.sin(angle) * offset
-        );
-        rawPos = null;
-      } else {
-        continue;
+        auPos = computeNeoPos(neo.orbit, new Date());
+      }
+      if (!auPos) continue;
+
+      const sp = posToScene(auPos);
+      if (!sp) continue;
+
+      // Trajectory
+      const orbitCopy = neo.orbit;
+      const trajPts = computeTrajectoryPoints((d) => computeNeoPos(orbitCopy, d), orbitCopy.period);
+      const trajLine = makeTrajectoryLine(trajPts, 0xef4444, 0.4);
+      if (trajLine) {
+        scene.add(trajLine);
+        trajectories.push({
+          line: trajLine, type: 'asteroid',
+          getPoints: () => computeTrajectoryPoints((d) => computeNeoPos(orbitCopy, d), orbitCopy.period),
+        });
       }
 
-      if (!pos) continue;
-
-      // Trajectory from orbital elements
-      if (neo.orbit) {
-        const trajPoints = computeNeoTrajectory(neo.orbit);
-        const trajLine = createTrajectoryLine(trajPoints, 0xef4444, 0.4);
-        if (trajLine) {
-          scene.add(trajLine);
-          trajectoryLines.push({
-            line: trajLine,
-            type: 'asteroid',
-            computePoints: () => computeNeoTrajectory(neo.orbit),
-          });
-        }
-      }
-
-      const size = Math.max(0.05, Math.min(0.15, (neo.diameterMaxKm || 0.05) * 0.5));
-      const color = neo.isPotentiallyHazardous ? 0xef4444 : 0x9e9e9e;
-      const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(size, 8, 8),
-        new THREE.MeshBasicMaterial({ color })
-      );
-      mesh.position.copy(pos);
-
+      const size = Math.max(0.04, Math.min(0.12, (neo.diameterMaxKm || 0.05) * 0.3));
+      const color = neo.isPotentiallyHazardous ? 0xef4444 : 0xaaaaaa;
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 8, 8), new THREE.MeshBasicMaterial({ color }));
+      mesh.position.copy(sp);
       mesh.userData = {
         type: 'asteroid', name: neo.name,
         diameterKm: neo.diameterMaxKm ? `${neo.diameterMinKm?.toFixed(3)}–${neo.diameterMaxKm.toFixed(3)}` : '?',
-        missDistanceKm: neo.closeApproach?.missDistanceKm
-          ? Math.round(neo.closeApproach.missDistanceKm).toLocaleString() : '?',
+        missDistanceKm: neo.closeApproach?.missDistanceKm ? Math.round(neo.closeApproach.missDistanceKm).toLocaleString() : '?',
         missDistanceAU: neo.closeApproach?.missDistanceAU?.toFixed(4) || '?',
         velocityKmS: neo.closeApproach?.velocityKmS?.toFixed(1) || '?',
         hazardous: neo.isPotentiallyHazardous ? 'Yes' : 'No',
         ready: true,
       };
-
       scene.add(mesh);
       clickables.push(mesh);
       bodyMeshes[neo.name] = mesh;
-      // Always track for scale rebuild — use orbit recompute if rawPos available
-      if (rawPos) {
-        bodies.push({ mesh, rawPos });
-      } else if (neo.orbit) {
-        // Recompute from orbit on scale change
-        bodies.push({ mesh, rawPos: computeNeoPosition(neo.orbit, new Date()) });
-      }
+
+      // Store orbit for scale rebuild — recompute fresh position each time
+      const orbitRef = neo.orbit;
+      allBodies.push({ mesh, getAUPos: () => computeNeoPos(orbitRef, new Date()) });
     }
   }
 
-  // --- Build UI Controls ---
-  buildFocusDropdown(bodyMeshes, camera, controls, renderState);
-  buildDisplayControls(trajectoryLines, rebuildPositions, renderState);
-
-  // --- Space Weather ---
+  // === UI ===
+  buildFocusDropdown(bodyMeshes, camera, controls, R);
+  buildDisplayControls(trajectories, rebuildAllWithMoons, R, clickables);
   renderSpaceWeather(results['space-weather']);
   updateSRSummary(results);
 
-  // --- Spacecraft panel toggle ---
-  const toggleBtn = document.getElementById('spacecraft-toggle-btn');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', () => {
-      const panel = toggleBtn.parentElement;
-      panel.setAttribute('aria-expanded',
-        panel.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');
-    });
-  }
+  document.getElementById('spacecraft-toggle-btn')?.addEventListener('click', function () {
+    const p = this.parentElement;
+    p.setAttribute('aria-expanded', p.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');
+  });
 
   loading.classList.add('hidden');
-  renderState.value = true;
+  R.value = true;
 }
 
-// === UI Builders ===
+// === UI Helpers ===
 
 function addLabel(scene, parent, text) {
   const div = document.createElement('div');
   div.className = 'label-2d';
   div.textContent = text;
-  const label = new CSS2DObject(div);
-  label.position.set(0, 1.2, 0);
-  parent.add(label);
-  return label;
+  const l = new CSS2DObject(div);
+  l.position.set(0, 1.2, 0);
+  parent.add(l);
+  return l;
 }
 
 function showInfoPanel(data, onFocus) {
   const panel = document.getElementById('info-panel');
   const content = document.getElementById('info-content');
-  let html = `<div class="object-name">${data.name}</div><dl>`;
-  html += `<dt>Type</dt><dd>${data.type}</dd>`;
-  if (data.distanceFromSunAU) html += `<dt>Distance from Sun</dt><dd>${data.distanceFromSunAU} AU</dd>`;
-  if (data.diameterKm) html += `<dt>Diameter</dt><dd>${data.diameterKm} km</dd>`;
-  if (data.missDistanceKm) html += `<dt>Miss Distance</dt><dd>${data.missDistanceKm} km</dd>`;
-  if (data.missDistanceAU) html += `<dt>Miss Distance</dt><dd>${data.missDistanceAU} AU</dd>`;
-  if (data.velocityKmS) html += `<dt>Velocity</dt><dd>${data.velocityKmS} km/s</dd>`;
-  if (data.hazardous) html += `<dt>Hazardous</dt><dd>${data.hazardous}</dd>`;
-  html += '</dl><button class="focus-btn" id="focus-btn">Focus</button>';
-  content.innerHTML = html;
+  let h = `<div class="object-name">${data.name}</div><dl>`;
+  h += `<dt>Type</dt><dd>${data.type}</dd>`;
+  if (data.parent) h += `<dt>Orbits</dt><dd>${data.parent}</dd>`;
+  if (data.orbitalPeriod) h += `<dt>Period</dt><dd>${data.orbitalPeriod}</dd>`;
+  if (data.distanceFromSunAU) h += `<dt>From Sun</dt><dd>${data.distanceFromSunAU} AU</dd>`;
+  if (data.diameterKm) h += `<dt>Diameter</dt><dd>${data.diameterKm} km</dd>`;
+  if (data.missDistanceKm) h += `<dt>Miss Dist</dt><dd>${data.missDistanceKm} km</dd>`;
+  if (data.missDistanceAU) h += `<dt>Miss Dist</dt><dd>${data.missDistanceAU} AU</dd>`;
+  if (data.velocityKmS) h += `<dt>Velocity</dt><dd>${data.velocityKmS} km/s</dd>`;
+  if (data.hazardous) h += `<dt>Hazardous</dt><dd>${data.hazardous}</dd>`;
+  h += '</dl><button class="focus-btn" id="focus-btn">Focus</button>';
+  content.innerHTML = h;
   panel.style.display = '';
-  document.getElementById('focus-btn').addEventListener('click', () => { if (onFocus) onFocus(); });
+  document.getElementById('focus-btn').onclick = onFocus;
 }
 
-function hideInfoPanel() {
-  document.getElementById('info-panel').style.display = 'none';
-}
+function hideInfoPanel() { document.getElementById('info-panel').style.display = 'none'; }
 
-function buildFocusDropdown(bodyMeshes, camera, controls, renderState) {
+function buildFocusDropdown(meshes, camera, controls, R) {
   const container = document.getElementById('focus-select-container');
-  const select = document.createElement('select');
-  select.className = 'focus-select';
-
-  const defaultOpt = document.createElement('option');
-  defaultOpt.value = '';
-  defaultOpt.textContent = 'Center on…';
-  select.appendChild(defaultOpt);
-
-  const groups = { Stars: [], Planets: [], Spacecraft: [], Asteroids: [] };
-  for (const [name, mesh] of Object.entries(bodyMeshes)) {
-    const type = mesh.userData?.type || 'planet';
-    const group = type === 'star' ? 'Stars' : type === 'planet' ? 'Planets'
-      : type === 'spacecraft' ? 'Spacecraft' : 'Asteroids';
-    groups[group].push(name);
+  const sel = document.createElement('select');
+  sel.className = 'focus-select';
+  sel.innerHTML = '<option value="">Center on…</option>';
+  const groups = { Stars: [], Planets: [], Moons: [], Spacecraft: [], Asteroids: [] };
+  for (const [name, mesh] of Object.entries(meshes)) {
+    const t = mesh.userData?.type || 'planet';
+    (groups[t === 'star' ? 'Stars' : t === 'planet' ? 'Planets' : t === 'moon' ? 'Moons' : t === 'spacecraft' ? 'Spacecraft' : 'Asteroids']).push(name);
   }
-
-  for (const [groupName, names] of Object.entries(groups)) {
+  for (const [g, names] of Object.entries(groups)) {
     if (!names.length) continue;
-    const optgroup = document.createElement('optgroup');
-    optgroup.label = groupName;
-    for (const name of names) {
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      optgroup.appendChild(opt);
-    }
-    select.appendChild(optgroup);
+    const og = document.createElement('optgroup');
+    og.label = g;
+    for (const n of names) { const o = document.createElement('option'); o.value = n; o.textContent = n; og.appendChild(o); }
+    sel.appendChild(og);
   }
-
-  select.addEventListener('change', () => {
-    const mesh = bodyMeshes[select.value];
-    if (mesh) {
-      animateCameraTo(camera, controls, mesh.position, renderState);
-      select.value = '';
-    }
+  sel.addEventListener('change', () => {
+    const m = meshes[sel.value];
+    if (m) { animateCameraTo(camera, controls, m.position, R); sel.value = ''; }
   });
-
-  container.appendChild(select);
+  container.appendChild(sel);
 }
 
-function buildDisplayControls(trajectoryLines, rebuildPositions, renderState) {
-  const container = document.getElementById('display-controls');
-  if (!container) return;
-
-  let html = '';
-
-  // Scale toggle
-  html += `<label class="spacecraft-label">
-    <input type="checkbox" id="scale-toggle" ${useLogScale ? 'checked' : ''}>
-    Log scale
-  </label>`;
-
-  // Trajectory toggles
-  html += `<label class="spacecraft-label">
-    <input type="checkbox" id="traj-planets" checked>
-    Planet orbits
-  </label>`;
-  html += `<label class="spacecraft-label">
-    <input type="checkbox" id="traj-asteroids" checked>
-    Asteroid orbits
-  </label>`;
-
-  container.innerHTML = html;
-
-  // Scale toggle handler
-  document.getElementById('scale-toggle').addEventListener('change', (e) => {
-    useLogScale = e.target.checked;
-    rebuildPositions();
+function buildDisplayControls(trajectories, rebuild, R, clickables) {
+  const c = document.getElementById('display-controls');
+  if (!c) return;
+  c.innerHTML = `
+    <label class="spacecraft-label"><input type="checkbox" id="scale-toggle" ${useLogScale ? 'checked' : ''}> Log scale</label>
+    <label class="spacecraft-label"><input type="checkbox" id="traj-planets" checked> Planet orbits</label>
+    <label class="spacecraft-label"><input type="checkbox" id="traj-asteroids" checked> Asteroid orbits</label>
+    <label class="spacecraft-label"><input type="checkbox" id="show-asteroids" checked> Asteroids</label>
+    <label class="spacecraft-label"><input type="checkbox" id="show-moons" checked> Moons</label>
+  `;
+  document.getElementById('scale-toggle').addEventListener('change', (e) => { useLogScale = e.target.checked; rebuild(); });
+  document.getElementById('traj-planets').addEventListener('change', (e) => { trajectories.filter(t => t.type === 'planet').forEach(t => t.line.visible = e.target.checked); R.value = true; });
+  document.getElementById('traj-asteroids').addEventListener('change', (e) => { trajectories.filter(t => t.type === 'asteroid').forEach(t => t.line.visible = e.target.checked); R.value = true; });
+  document.getElementById('show-asteroids').addEventListener('change', (e) => {
+    clickables.filter(m => m.userData?.type === 'asteroid').forEach(m => m.visible = e.target.checked);
+    trajectories.filter(t => t.type === 'asteroid').forEach(t => t.line.visible = e.target.checked && document.getElementById('traj-asteroids').checked);
+    R.value = true;
   });
-
-  // Trajectory toggle handlers
-  document.getElementById('traj-planets').addEventListener('change', (e) => {
-    for (const t of trajectoryLines) {
-      if (t.type === 'planet') t.line.visible = e.target.checked;
-    }
-    renderState.value = true;
-  });
-
-  document.getElementById('traj-asteroids').addEventListener('change', (e) => {
-    for (const t of trajectoryLines) {
-      if (t.type === 'asteroid') t.line.visible = e.target.checked;
-    }
-    renderState.value = true;
+  document.getElementById('show-moons').addEventListener('change', (e) => {
+    clickables.filter(m => m.userData?.type === 'moon').forEach(m => { m.visible = e.target.checked; m.children.forEach(c => c.visible = e.target.checked); });
+    R.value = true;
   });
 }
 
 function renderSpaceWeather(result) {
-  const container = document.getElementById('space-weather-content');
-  if (!result?.data) {
-    container.innerHTML = '<div class="error-placeholder">Space weather unavailable</div>';
-    return;
-  }
+  const c = document.getElementById('space-weather-content');
+  if (!result?.data) { c.innerHTML = '<div class="error-placeholder">Space weather unavailable</div>'; return; }
   const { kp, flares } = result.data;
-  let html = '<div style="margin-bottom:0.75rem;">';
-  html += '<div style="color:var(--text-secondary);font-size:0.6875rem;">Kp Index</div>';
+  let h = '<div style="margin-bottom:0.75rem"><div style="color:var(--text-secondary);font-size:0.6875rem">Kp Index</div>';
   if (kp.index !== null) {
-    html += `<span class="kp-value" data-level="${kp.level}">${kp.index}</span>`;
-    if (kp.index >= 5) html += '<div style="color:var(--maybe);font-size:0.6875rem;margin-top:0.25rem;">Aurora possible</div>';
-  } else {
-    html += '<span style="color:var(--text-muted);">No recent data</span>';
-  }
-  html += '</div>';
+    h += `<span class="kp-value" data-level="${kp.level}">${kp.index}</span>`;
+    if (kp.index >= 5) h += '<div style="color:var(--maybe);font-size:0.6875rem;margin-top:0.25rem">Aurora possible</div>';
+  } else h += '<span style="color:var(--text-muted)">No recent data</span>';
+  h += '</div>';
   if (flares?.length) {
-    html += '<div style="color:var(--text-secondary);font-size:0.6875rem;margin-bottom:0.375rem;">Recent Flares</div>';
-    for (const flare of flares.slice(0, 3)) {
-      const time = flare.peakTime
-        ? new Date(flare.peakTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-        : '';
-      html += `<div style="font-size:0.75rem;margin-bottom:0.125rem;"><strong>${flare.classType || '?'}</strong> ${time}</div>`;
+    h += '<div style="color:var(--text-secondary);font-size:0.6875rem;margin-bottom:0.375rem">Recent Flares</div>';
+    for (const f of flares.slice(0, 3)) {
+      const t = f.peakTime ? new Date(f.peakTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+      h += `<div style="font-size:0.75rem;margin-bottom:0.125rem"><strong>${f.classType || '?'}</strong> ${t}</div>`;
     }
-  } else {
-    html += '<div style="color:var(--text-muted);font-size:0.75rem;">No recent solar flares</div>';
-  }
-  if (result.stale) html += '<span class="stale-indicator" style="margin-top:0.5rem;">stale data</span>';
-  container.innerHTML = html;
+  } else h += '<div style="color:var(--text-muted);font-size:0.75rem">No recent solar flares</div>';
+  if (result.stale) h += '<span class="stale-indicator" style="margin-top:0.5rem">stale data</span>';
+  c.innerHTML = h;
 }
 
 function updateSRSummary(results) {
   const el = document.getElementById('sr-summary');
-  const parts = [];
-  if (results.planets.data) parts.push(`${results.planets.data.length} planets`);
-  if (results.spacecraft.data) parts.push(`${results.spacecraft.data.filter(s => s.defaultOn).length} spacecraft`);
-  if (results.asteroids.data) parts.push(`${results.asteroids.data.length} near-Earth asteroids`);
-  el.textContent = parts.length ? `Solar system loaded: ${parts.join(', ')}.` : 'Solar system data loading failed.';
+  const p = [];
+  if (results.planets.data) p.push(`${results.planets.data.length} planets`);
+  if (results.spacecraft.data) p.push(`${results.spacecraft.data.filter(s => s.defaultOn).length} spacecraft`);
+  if (results.asteroids.data) p.push(`${results.asteroids.data.length} asteroids`);
+  el.textContent = p.length ? `Solar system: ${p.join(', ')}.` : 'Data loading failed.';
 }
 
-function loadToggles() {
-  try { return JSON.parse(localStorage.getItem('spacecraft-toggles') || '{}'); }
-  catch { return {}; }
-}
-
+function loadToggles() { try { return JSON.parse(localStorage.getItem('spacecraft-toggles') || '{}'); } catch { return {}; } }
 function saveToggles() {
-  const toggles = {};
-  document.querySelectorAll('#spacecraft-toggles input[type="checkbox"]').forEach(cb => {
-    toggles[cb.dataset.craftId] = cb.checked;
-  });
-  localStorage.setItem('spacecraft-toggles', JSON.stringify(toggles));
+  const t = {};
+  document.querySelectorAll('#spacecraft-toggles input[type="checkbox"]').forEach(cb => { t[cb.dataset.craftId] = cb.checked; });
+  localStorage.setItem('spacecraft-toggles', JSON.stringify(t));
 }
 
 async function showFallback() {
   document.getElementById('loading').classList.add('hidden');
   document.getElementById('canvas').style.display = 'none';
   document.getElementById('fallback').style.display = '';
-  const results = await fetchAll(['planets', 'spacecraft', 'asteroids', 'space-weather']);
-  const content = document.getElementById('fallback-content');
-  let html = '';
-  if (results.planets.data) {
-    html += '<h2 style="margin:1rem 0 0.5rem;">Planets</h2><table class="panel" style="width:100%;border-collapse:collapse;">';
-    html += '<tr><th style="text-align:left;padding:0.5rem;">Name</th><th style="text-align:right;padding:0.5rem;">Distance (AU)</th></tr>';
-    for (const p of results.planets.data) {
-      if (!p.position) continue;
-      const dist = Math.sqrt(p.position.x ** 2 + p.position.y ** 2 + p.position.z ** 2);
-      html += `<tr><td style="padding:0.375rem 0.5rem;">${p.name}</td><td style="text-align:right;padding:0.375rem 0.5rem;">${dist.toFixed(3)}</td></tr>`;
-    }
-    html += '</table>';
+  const r = await fetchAll(['planets', 'spacecraft', 'asteroids', 'space-weather']);
+  let h = '';
+  if (r.planets.data) {
+    h += '<h2 style="margin:1rem 0 0.5rem">Planets</h2><table class="panel" style="width:100%;border-collapse:collapse"><tr><th style="text-align:left;padding:0.5rem">Name</th><th style="text-align:right;padding:0.5rem">Distance (AU)</th></tr>';
+    for (const p of r.planets.data) { if (!p.position) continue; const d = Math.sqrt(p.position.x**2+p.position.y**2+p.position.z**2); h += `<tr><td style="padding:0.375rem 0.5rem">${p.name}</td><td style="text-align:right;padding:0.375rem 0.5rem">${d.toFixed(3)}</td></tr>`; }
+    h += '</table>';
   }
-  if (results.spacecraft.data) {
-    html += '<h2 style="margin:1rem 0 0.5rem;">Spacecraft</h2><table class="panel" style="width:100%;border-collapse:collapse;">';
-    html += '<tr><th style="text-align:left;padding:0.5rem;">Name</th><th style="text-align:right;padding:0.5rem;">Distance (AU)</th></tr>';
-    for (const s of results.spacecraft.data) {
-      html += `<tr><td style="padding:0.375rem 0.5rem;">${s.name}</td><td style="text-align:right;padding:0.375rem 0.5rem;">${s.distanceFromSunAU?.toFixed(3) || '?'}</td></tr>`;
-    }
-    html += '</table>';
-  }
-  content.innerHTML = html;
+  document.getElementById('fallback-content').innerHTML = h;
 }
 
 init();
