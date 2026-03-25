@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cosmic Overview — Space Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js">
+  <style>
+    html, body { overflow: hidden; height: 100%; }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="nav-bar" style="position:fixed;top:0;left:0;right:0;z-index:15;background:rgba(10,14,23,0.85);backdrop-filter:blur(8px);">
+    <a href="/">← Dashboard</a>
+    <span class="nav-title">Cosmic Overview</span>
+    <a href="/stargazer/">Stargazer →</a>
+  </nav>
+
+  <!-- Loading overlay -->
+  <div id="loading" class="cosmic-loading">Loading Solar System…</div>
+
+  <!-- 3D Canvas -->
+  <canvas id="canvas" class="cosmic-canvas" aria-hidden="true"></canvas>
+
+  <!-- WebGL fallback (hidden unless needed) -->
+  <div id="fallback" style="display:none;" class="stargazer-layout" role="main">
+    <h1 style="margin-top:4rem;">Solar System — Text View</h1>
+    <p style="color:var(--text-secondary);margin-bottom:1rem;">Your browser doesn't support WebGL. Showing data in table format.</p>
+    <div id="fallback-content"></div>
+  </div>
+
+  <!-- Label container for CSS2DRenderer -->
+  <div id="labels"></div>
+
+  <!-- Spacecraft toggle panel -->
+  <aside class="overlay-panel spacecraft-panel" aria-label="Spacecraft visibility" aria-expanded="true" style="top:3.5rem;">
+    <button class="panel-toggle" onclick="this.parentElement.setAttribute('aria-expanded', this.parentElement.getAttribute('aria-expanded')==='true'?'false':'true')">
+      Spacecraft ▾
+    </button>
+    <div class="panel-body" id="spacecraft-toggles"></div>
+  </aside>
+
+  <!-- Space weather panel -->
+  <aside class="overlay-panel space-weather-panel" aria-label="Space weather">
+    <h2 class="panel-header" style="margin-bottom:0.5rem;">Space Weather</h2>
+    <div id="space-weather-content">
+      <div class="loading-msg">Loading…</div>
+    </div>
+  </aside>
+
+  <!-- Info panel (hidden until object clicked) -->
+  <aside class="overlay-panel info-panel" id="info-panel" style="display:none;" aria-label="Object details">
+    <div id="info-content"></div>
+  </aside>
+
+  <!-- Screen reader text summary -->
+  <div class="sr-only" id="sr-summary" role="status" aria-live="polite" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;">
+    Solar system visualization loading.
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="/js/cosmic.js"></script>
+</body>
+</html>
