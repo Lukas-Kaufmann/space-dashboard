@@ -1,7 +1,7 @@
 ---
 title: "feat: Space Dashboard — Stargazer + Cosmic Overview"
 type: feat
-status: active
+status: completed
 date: 2026-03-25
 origin: docs/brainstorms/2026-03-25-space-dashboard-brainstorm.md
 ---
@@ -838,18 +838,18 @@ Not a concern.
 
 Set up the Cloudflare project structure and get data flowing.
 
-- [ ] `git init`, `.gitignore`, `package.json` (wrangler dependency)
-- [ ] `wrangler.toml` with KV binding
-- [ ] `functions/lib/kv-cache.js` — Shared two-key SWR cache module
-- [ ] `functions/api/_middleware.js` — CORS + error handling
-- [ ] `functions/api/weather.js` — Open-Meteo proxy
-- [ ] `functions/api/asteroids.js` — NeoWs proxy (60-min TTL)
-- [ ] `functions/api/space-weather.js` — DONKI proxy
-- [ ] `functions/api/spacecraft.js` — JPL Horizons proxy (batched, ≤6 concurrent)
-- [ ] `functions/api/planets.js` — JPL Horizons proxy (8 planets)
-- [ ] `public/index.html` — Minimal landing page with view links
-- [ ] `public/_headers` — CSP + security headers
-- [ ] Verify all endpoints with `wrangler pages dev`
+- [x] `git init`, `.gitignore`, `package.json` (wrangler dependency)
+- [x] `wrangler.toml` with KV binding
+- [x] `functions/lib/kv-cache.js` — Shared two-key SWR cache module
+- [x] `functions/api/_middleware.js` — CORS + error handling
+- [x] `functions/api/weather.js` — Open-Meteo proxy
+- [x] `functions/api/asteroids.js` — NeoWs proxy (60-min TTL)
+- [x] `functions/api/space-weather.js` — DONKI proxy
+- [x] `functions/api/spacecraft.js` — JPL Horizons proxy (batched, ≤6 concurrent)
+- [x] `functions/api/planets.js` — JPL Horizons proxy (8 planets)
+- [x] `public/index.html` — Minimal landing page with view links
+- [x] `public/_headers` — CSP + security headers
+- [x] Verify all endpoints with `wrangler pages dev`
 
 **Deliverable:** All API endpoints returning cached data locally.
 
@@ -857,17 +857,17 @@ Set up the Cloudflare project structure and get data flowing.
 
 Build the weather/sky conditions view.
 
-- [ ] `public/css/style.css` — Design system (palette, typography, panels)
-- [ ] `public/stargazer/index.html` — Page structure, dark theme
-- [ ] `public/js/moon.js` — SunCalc moon phase algorithm (UTC-based)
-- [ ] `public/js/api.js` — Shared fetch helpers with `Promise.allSettled()`
-- [ ] `public/js/stargazer.js` — Fetch weather, compute Go/No-Go
-- [ ] Go/No-Go badge (LED dot, glow, text label)
-- [ ] Weather timeline (horizontal scroll, hourly cards)
-- [ ] Moon phase display (CSS crescent, illumination %, phase name)
-- [ ] Visible planets list
-- [ ] Error states (stale indicator, failed endpoint placeholders)
-- [ ] Responsive layout (mobile-first for outdoor checks)
+- [x] `public/css/style.css` — Design system (palette, typography, panels)
+- [x] `public/stargazer/index.html` — Page structure, dark theme
+- [x] `public/js/moon.js` — SunCalc moon phase algorithm (UTC-based)
+- [x] `public/js/api.js` — Shared fetch helpers with `Promise.allSettled()`
+- [x] `public/js/stargazer.js` — Fetch weather, compute Go/No-Go
+- [x] Go/No-Go badge (LED dot, glow, text label)
+- [x] Weather timeline (horizontal scroll, hourly cards)
+- [x] Moon phase display (CSS crescent, illumination %, phase name)
+- [x] Visible planets list
+- [x] Error states (stale indicator, failed endpoint placeholders)
+- [x] Responsive layout (mobile-first for outdoor checks)
 
 **Deliverable:** Fully functional Stargazer page.
 
@@ -875,35 +875,35 @@ Build the weather/sky conditions view.
 
 Build the 3D solar system view.
 
-- [ ] `public/cosmic/index.html` — Canvas + overlay panels + modulepreload
-- [ ] `public/js/cosmic.js` — Three.js scene setup
-- [ ] Scene readiness gate pattern (parallel fetch + scene init)
-- [ ] Sun, planets with orbit paths (BufferGeometry Lines)
-- [ ] Log-scale distance mapping (`auToScene()`)
-- [ ] Spacecraft markers from API data (default 6)
-- [ ] Asteroid markers from NeoWs data
-- [ ] CSS2DRenderer labels (`pointer-events: none`)
-- [ ] OrbitControls (damping, no pan, `DOLLY_ROTATE` for touch)
-- [ ] On-demand rendering (render only on camera change)
-- [ ] Click/tap interaction → info panel (drag-vs-click discrimination)
-- [ ] Spacecraft toggle panel with localStorage persistence
-- [ ] Space weather overlay (Kp index, flares)
-- [ ] Loading state
-- [ ] WebGL fallback (text table)
-- [ ] Background tab handling (Visibility API)
-- [ ] `prefers-reduced-motion` handling
+- [x] `public/cosmic/index.html` — Canvas + overlay panels + modulepreload
+- [x] `public/js/cosmic.js` — Three.js scene setup
+- [x] Scene readiness gate pattern (parallel fetch + scene init)
+- [x] Sun, planets with orbit paths (BufferGeometry Lines)
+- [x] Log-scale distance mapping (`auToScene()`)
+- [x] Spacecraft markers from API data (default 6)
+- [x] Asteroid markers from NeoWs data
+- [x] CSS2DRenderer labels (`pointer-events: none`)
+- [x] OrbitControls (damping, no pan, `DOLLY_ROTATE` for touch)
+- [x] On-demand rendering (render only on camera change)
+- [x] Click/tap interaction → info panel (drag-vs-click discrimination)
+- [x] Spacecraft toggle panel with localStorage persistence
+- [x] Space weather overlay (Kp index, flares)
+- [x] Loading state
+- [x] WebGL fallback (text table)
+- [x] Background tab handling (Visibility API)
+- [x] `prefers-reduced-motion` handling
 
 **Deliverable:** Fully functional Cosmic Overview page.
 
 ### Phase 4: Polish + Deploy
 
-- [ ] Landing page (`index.html`) — styled view switcher
-- [ ] CSS refinement (consistent panel styles, responsive breakpoints)
-- [ ] Responsive testing (mobile, tablet, desktop)
-- [ ] Accessibility pass (keyboard nav, focus rings, contrast check)
-- [ ] Create KV namespace: `wrangler kv namespace create CACHE`
-- [ ] Deploy: `wrangler pages deploy`
-- [ ] Verify all endpoints and views in production
+- [x] Landing page (`index.html`) — styled view switcher
+- [x] CSS refinement (consistent panel styles, responsive breakpoints)
+- [x] Responsive testing (mobile, tablet, desktop)
+- [x] Accessibility pass (keyboard nav, focus rings, contrast check)
+- [x] Create KV namespace: `wrangler kv namespace create CACHE`
+- [x] Deploy: `wrangler pages deploy`
+- [x] Verify all endpoints and views in production
 
 **Deliverable:** Live dashboard at `<project>.pages.dev`.
 
