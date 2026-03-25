@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stargazer — Space Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="nav-bar" aria-label="Main navigation">
+    <a href="/">← Dashboard</a>
+    <span class="nav-title">Stargazer</span>
+    <a href="/cosmic/">Cosmic →</a>
+  </nav>
+
+  <main class="stargazer-layout" role="main">
+    <section class="stargazer-hero" aria-label="Stargazing conditions">
+      <h1>Tonight's Sky</h1>
+      <p class="location">Dornbirn, Austria — 47.41°N 9.74°E</p>
+
+      <div id="go-nogo" aria-live="polite">
+        <div class="loading-msg">Checking conditions…</div>
+      </div>
+    </section>
+
+    <div class="stargazer-panels">
+      <!-- Weather Timeline -->
+      <section class="panel panel--full" aria-label="Hourly weather forecast">
+        <h2 class="panel-header">Observation Window</h2>
+        <div id="timeline" class="timeline">
+          <div class="loading-msg">Loading weather…</div>
+        </div>
+      </section>
+
+      <!-- Moon Phase -->
+      <section class="panel" aria-label="Moon phase">
+        <h2 class="panel-header">Moon</h2>
+        <div id="moon-display" class="moon-display">
+          <div class="loading-msg">Computing…</div>
+        </div>
+      </section>
+
+      <!-- Visible Planets -->
+      <section class="panel" aria-label="Visible planets">
+        <h2 class="panel-header">Visible Planets</h2>
+        <div id="planets">
+          <div class="loading-msg">Loading…</div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="/js/stargazer.js"></script>
+</body>
+</html>
