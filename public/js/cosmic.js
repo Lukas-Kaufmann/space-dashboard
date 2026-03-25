@@ -21,21 +21,22 @@ const PLANET_DATA = {
 };
 
 // Major moons: distance from parent (km), orbital period (days), size (scene units)
+// color is used for procedural texture (real photographs not freely downloadable)
 const MOONS = {
   Earth:   [{ name: 'Moon',      dist: 384400,  period: 27.322,  size: 0.2,  texture: '/textures/moon.jpg' }],
-  Mars:    [{ name: 'Phobos',    dist: 9377,    period: 0.319,   size: 0.06 },
-            { name: 'Deimos',    dist: 23460,   period: 1.262,   size: 0.05 }],
-  Jupiter: [{ name: 'Io',        dist: 421700,  period: 1.769,   size: 0.15 },
-            { name: 'Europa',    dist: 671100,  period: 3.551,   size: 0.13 },
-            { name: 'Ganymede',  dist: 1070400, period: 7.155,   size: 0.18 },
-            { name: 'Callisto',  dist: 1882700, period: 16.689,  size: 0.16 }],
-  Saturn:  [{ name: 'Titan',     dist: 1221870, period: 15.945,  size: 0.17 },
-            { name: 'Enceladus', dist: 238020,  period: 1.370,   size: 0.06 },
-            { name: 'Mimas',     dist: 185520,  period: 0.942,   size: 0.05 },
-            { name: 'Rhea',      dist: 527108,  period: 4.518,   size: 0.08 }],
-  Uranus:  [{ name: 'Titania',   dist: 436300,  period: 8.706,   size: 0.08 },
-            { name: 'Oberon',    dist: 583500,  period: 13.463,  size: 0.08 }],
-  Neptune: [{ name: 'Triton',    dist: 354800,  period: 5.877,   size: 0.1  }],
+  Mars:    [{ name: 'Phobos',    dist: 9377,    period: 0.319,   size: 0.06, color: 0x8a7a6a },
+            { name: 'Deimos',    dist: 23460,   period: 1.262,   size: 0.05, color: 0x9a8a7a }],
+  Jupiter: [{ name: 'Io',        dist: 421700,  period: 1.769,   size: 0.15, color: 0xd4b840 },  // sulfur yellow
+            { name: 'Europa',    dist: 671100,  period: 3.551,   size: 0.13, color: 0xc8c0b0 },  // icy tan
+            { name: 'Ganymede',  dist: 1070400, period: 7.155,   size: 0.18, color: 0xa09888 },  // grey-brown
+            { name: 'Callisto',  dist: 1882700, period: 16.689,  size: 0.16, color: 0x605848 }], // dark cratered
+  Saturn:  [{ name: 'Titan',     dist: 1221870, period: 15.945,  size: 0.17, color: 0xc89840 },  // orange haze
+            { name: 'Enceladus', dist: 238020,  period: 1.370,   size: 0.06, color: 0xe8e8f0 },  // bright ice
+            { name: 'Mimas',     dist: 185520,  period: 0.942,   size: 0.05, color: 0xc0c0c0 },  // grey
+            { name: 'Rhea',      dist: 527108,  period: 4.518,   size: 0.08, color: 0xb0b0b0 }],
+  Uranus:  [{ name: 'Titania',   dist: 436300,  period: 8.706,   size: 0.08, color: 0xa0a0a8 },
+            { name: 'Oberon',    dist: 583500,  period: 13.463,  size: 0.08, color: 0x908888 }],
+  Neptune: [{ name: 'Triton',    dist: 354800,  period: 5.877,   size: 0.1,  color: 0xb8c8d0 }], // pinkish ice
 };
 
 // Keplerian elements (J2000) for planet trajectory computation
@@ -139,13 +140,17 @@ function makeTrajectoryLine(points, color, opacity) {
 // === Texture Loading ===
 
 function loadPlanetMaterial(vis) {
-  const emissive = new THREE.Color(vis.color).multiplyScalar(0.15);
+  // Start with the flat color; when the texture loads, switch to
+  // white base (so the texture isn't tinted) and subtle emissive.
   const mat = new THREE.MeshStandardMaterial({
-    color: vis.color, emissive, emissiveIntensity: 1.0, roughness: 0.8, metalness: 0.1,
+    color: vis.color, emissive: new THREE.Color(vis.color).multiplyScalar(0.15),
+    emissiveIntensity: 1.0, roughness: 0.8, metalness: 0.1,
   });
   if (vis.texture) {
     textureLoader.load(vis.texture, (tex) => {
       mat.map = tex;
+      mat.color.set(0xffffff);           // don't tint the texture
+      mat.emissive.set(0x333333);        // gentle self-illumination
       mat.needsUpdate = true;
     });
   }
@@ -153,17 +158,54 @@ function loadPlanetMaterial(vis) {
 }
 
 function loadMoonMaterial(moon) {
+  const baseColor = moon.color || 0xbbbbbb;
   const mat = new THREE.MeshStandardMaterial({
-    color: 0xbbbbbb, emissive: 0x222222, roughness: 0.9,
+    color: baseColor, emissive: new THREE.Color(baseColor).multiplyScalar(0.15),
+    emissiveIntensity: 1.0, roughness: 0.9,
   });
   if (moon.texture) {
     textureLoader.load(moon.texture, (tex) => {
       mat.map = tex;
+      mat.color.set(0xffffff);
+      mat.emissive.set(0x333333);
       mat.needsUpdate = true;
     });
+  } else if (moon.color) {
+    // Procedural texture with craters/surface noise
+    mat.map = generateMoonTexture(moon.color, moon.name);
+    mat.color.set(0xffffff);
+    mat.emissive.set(0x333333);
   }
   return mat;
 }
+
+function generateMoonTexture(baseColor, name) {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size * 2;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const c = new THREE.Color(baseColor);
+  const r = c.r * 255, g = c.g * 255, b = c.b * 255;
+
+  // Seeded random from name for consistency
+  let seed = 0;
+  for (let i = 0; i < name.length; i++) seed = ((seed << 5) - seed + name.charCodeAt(i)) | 0;
+  const rng = () => { seed = (seed * 16807 + 0) % 2147483647; return (seed & 0x7fffffff) / 0x7fffffff; };
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size * 2; x++) {
+      const noise = (rng() - 0.5) * 40;
+      // Simulate craters as darker spots
+      const crater = rng() < 0.03 ? -30 : 0;
+      ctx.fillStyle = `rgb(${clamp(r + noise + crater)},${clamp(g + noise * 0.9 + crater)},${clamp(b + noise * 0.8 + crater)})`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  return new THREE.CanvasTexture(canvas);
+}
+
+function clamp(v) { return Math.max(0, Math.min(255, v)) | 0; }
 
 // === Moon orbital position ===
 // Exaggerated distance from parent (actual km → scene offset)
@@ -244,10 +286,14 @@ async function init() {
   scene.add(new THREE.PointLight(0xffffff, 2.0, 0));
 
   // Sun
-  const sun = new THREE.Mesh(
-    new THREE.SphereGeometry(1.5, 32, 16),
-    new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
-  );
+  const sunMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+  textureLoader.load('/textures/sun.jpg', (tex) => {
+    sunMat.map = tex;
+    sunMat.color.set(0xffffff);
+    sunMat.needsUpdate = true;
+    R.value = true;
+  });
+  const sun = new THREE.Mesh(new THREE.SphereGeometry(1.5, 32, 16), sunMat);
   sun.userData = { type: 'star', name: 'Sun', ready: true };
   scene.add(sun);
   addLabel(scene, sun, 'Sun');
