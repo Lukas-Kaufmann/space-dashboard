@@ -5,4 +5,4 @@ compatibility_flags = ["nodejs_compat"]
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = "placeholder"
+id = "fbee682c7f974bd393727072eab94e8e"
