@@ -1,4 +1,4 @@
-import { fetchAll } from './api.js';
+import { fetchAPI, fetchAll, getLocation } from './api.js';
 import { getMoonIllumination } from './moon.js';
 
 // --- Observation Window ---
@@ -194,25 +194,39 @@ async function init() {
   const moon = getMoonIllumination(new Date());
   renderMoon(moon);
 
+  // Get browser location (falls back to null → Worker uses Dornbirn default)
+  const loc = await getLocation();
+  const locationEl = document.querySelector('.location');
+  if (loc) {
+    locationEl.textContent = `${loc.lat.toFixed(1)}°N ${Math.abs(loc.lon).toFixed(1)}°${loc.lon >= 0 ? 'E' : 'W'}`;
+  }
+
+  // Build weather endpoint with location params
+  const weatherEp = loc ? `weather?lat=${loc.lat}&lon=${loc.lon}` : 'weather';
+
   // Fetch weather and planets in parallel
-  const results = await fetchAll(['weather', 'planets']);
+  const [weatherResult, planetsResult] = await Promise.allSettled([
+    fetchAPI(weatherEp),
+    fetchAPI('planets'),
+  ]);
 
   // Weather + Go/No-Go
-  if (results.weather.data) {
-    const windowHours = getWindowHours(results.weather.data);
+  if (weatherResult.status === 'fulfilled') {
+    const { data, stale } = weatherResult.value;
+    const windowHours = getWindowHours(data);
     const goNoGo = computeGoNoGo(windowHours, moon.illumination);
-    renderGoNoGo(goNoGo, results.weather.stale);
+    renderGoNoGo(goNoGo, stale);
     renderTimeline(windowHours);
   } else {
-    renderError('go-nogo', `Weather unavailable: ${results.weather.error}`);
+    renderError('go-nogo', `Weather unavailable: ${weatherResult.reason?.message}`);
     renderError('timeline', 'Weather data unavailable');
   }
 
   // Planets
-  if (results.planets.data) {
-    renderPlanets(results.planets.data);
+  if (planetsResult.status === 'fulfilled') {
+    renderPlanets(planetsResult.value.data);
   } else {
-    renderError('planets', `Planets unavailable: ${results.planets.error}`);
+    renderError('planets', `Planets unavailable: ${planetsResult.reason?.message}`);
   }
 }
 

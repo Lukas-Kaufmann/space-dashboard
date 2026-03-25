@@ -53,3 +53,26 @@ export async function fetchAll(endpoints) {
 
   return out;
 }
+
+/**
+ * Get browser geolocation. Returns { lat, lon } or null if denied/unavailable.
+ * Rounds to 1 decimal (~11km) to match server-side cache grouping.
+ */
+export function getLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          lat: Math.round(pos.coords.latitude * 10) / 10,
+          lon: Math.round(pos.coords.longitude * 10) / 10,
+        });
+      },
+      () => resolve(null),
+      { timeout: 5000, maximumAge: 600000 }
+    );
+  });
+}
